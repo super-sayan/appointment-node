@@ -17,6 +17,14 @@ jobs:
       # Define repo for output of results.
       - name: Checkout Code
         uses: actions/checkout@v4
+
+      - name: Detect Primary Language
+        id: detect-lang
+        run: |
+          PRIMARY_LANGUAGE=$(curl -s https://api.github.com/repos/${{ github.repository }} | jq -r '.language')
+          echo "Detected Language: $PRIMARY_LANGUAGE"
+          echo "PRIMARY_LANGUAGE=$PRIMARY_LANGUAGE" >> $GITHUB_ENV
+          
       # Define Programming Language.
       - name: Setup Node.js
         uses: actions/setup-node@v4.1.0
