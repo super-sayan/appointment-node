@@ -69,7 +69,7 @@ jobs:
                   echo "$output" | sed -n '/Unused dependencies/,$p' | while IFS= read -r line; do
                     if [[ $line == "*"* ]]; then
                       dep=$(echo "$line" | sed -E 's/\* //; s/:.*$//')
-                      echo "$dep" >> ../unused_dependencies.txt
+                      echo "$dep" >> unused_dependencies.txt
                     fi
                   done
                 fi
@@ -79,7 +79,7 @@ jobs:
                   echo "$output" | sed -n '/Unused devDependencies/,$p' | while IFS= read -r line; do
                     if [[ $line == "*"* ]]; then
                       dep=$(echo "$line" | sed -E 's/\* //; s/:.*$//')
-                      echo "$dep" >> ../unused_dependencies.txt
+                      echo "$dep" >> unused_dependencies.txt
                     fi
                   done
                 fi
