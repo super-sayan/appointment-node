@@ -112,7 +112,13 @@ jobs:
               ($unused | map(.name == $name and .group == $group) | any) | not
             ))
           ' sbom.json > filtered_sbom.json
-   
+     
+      - name: Upload Test results
+        uses: actions/upload-artifact@master
+        with:
+           name: Filtered Deps
+           path: filtered_sbom.json
+           
       # An official Dependecy Track action for SBOM upload, doesn't work good with full URL of Dep Track Server.
       - name: Upload SBOM to Dependency Track
         uses: DependencyTrack/gh-upload-sbom@v3
