@@ -27,7 +27,23 @@ jobs:
           
       # Define Programming Language.
       - name: Setup Node.js
+        if: env.PRIMARY_LANGUAGE == 'JavaScript' || env.PRIMARY_LANGUAGE == 'TypeScript'
         uses: actions/setup-node@v4.1.0
+      
+      - name: Setup Python
+        uses: actions/setup-python@v5.3.0
+
+      - name: Setup Java JDK
+        if: env.PRIMARY_LANGUAGE == 'Java'
+        uses: actions/setup-java@v4.6.0
+        
+      - name: Setup Go
+        if: env.PRIMARY_LANGUAGE == 'Go'
+        uses: actions/setup-go@v5.2.0     
+
+      - name: Setup PHP
+        if: env.PRIMARY_LANGUAGE == 'PHP'
+        uses: shivammathur/setup-php@2.32.0
        
       - name: Find Dependency Files
         id: locate-dependencies
@@ -70,7 +86,53 @@ jobs:
           for dir in ${{ env.DEPENDENCY_DIRS }}; do
             echo "Installing dependencies in $dir"
             cd "$dir" || exit
-            npm install
+            
+            case ${{ env.PRIMARY_LANGUAGE }} in
+              "JavaScript"|"TypeScript")
+                echo "Installing Node.js dependencies..."
+                npm install
+                ;;
+              "Python")
+                echo "Installing Python dependencies..."
+                if [ -f "requirements.txt" ]; then
+                  python -m pip install --upgrade pip
+                  pip install -r requirements.txt
+                else
+                  echo "No requirements.txt found, skipping..."
+                fi
+                ;;
+              "Java")
+                echo "Installing Java dependencies..."
+                if [ -f "pom.xml" ]; then
+                  mvn clean install
+                elif [ -f "build.gradle" ]; then
+                  gradle build
+                else
+                  echo "No recognized Java dependency file found, skipping..."
+                fi
+                ;;
+              "Go")
+                echo "Installing Go dependencies..."
+                if [ -f "go.mod" ]; then
+                  go mod tidy
+                else
+                  echo "No go.mod file found, skipping..."
+                fi
+                ;;
+              "PHP")
+                echo "Installing PHP dependencies..."
+                if [ -f "composer.json" ]; then
+                  composer install
+                else
+                  echo "No composer.json file found, skipping..."
+                fi
+                ;;
+              *)
+                echo "Unsupported or unknown language: ${{ env.PRIMARY_LANGUAGE }}"
+                exit 1
+                ;;
+            esac
+      
             cd - || exit
           done
         shell: bash
@@ -185,12 +247,6 @@ jobs:
               ($unused | map(.name == $name and .group == $group) | any) | not
             ))
           ' sbom.json > filtered_sbom.json
-     
-      - name: Upload Test results
-        uses: actions/upload-artifact@master
-        with:
-           name: Filtered Deps
-           path: filtered_sbom.json
            
       # An official Dependecy Track action for SBOM upload, doesn't work good with full URL of Dep Track Server.
       - name: Upload SBOM to Dependency Track
@@ -221,11 +277,7 @@ jobs:
           -o epss.json  
           echo "EPSS data fetched successfully." 
         # -H "Accept: application/sarif+json" \
-      
-      - name: Set up Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: '3.x'
+
       # Generate a consolidated dependencies file from package.json files
       - name: Gather Dependencies from package.json Files
         run: |
