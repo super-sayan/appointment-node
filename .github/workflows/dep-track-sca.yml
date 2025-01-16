@@ -29,21 +29,45 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4.1.0
        
-      - name: Find package.json Files
-        id: locate-package-json
+      - name: Find Dependency Files
+        id: locate-dependencies
         run: |
-          # Find all directories containing package.json
-          find . -name "package.json" -exec dirname {} \; > package_dirs.txt
+          case ${{ env.PRIMARY_LANGUAGE }} in
+            "JavaScript"|"TypeScript")
+              echo "Searching for JavaScript/TypeScript dependency files..."
+              find . -name "package.json" -exec dirname {} \; > dependency_dirs.txt
+              ;;
+            "Python")
+              echo "Searching for Python dependency files..."
+              find . -name "requirements.txt" -exec dirname {} \; > dependency_dirs.txt
+              ;;
+            "Java")
+              echo "Searching for Java dependency files..."
+              find . \( -name "pom.xml" -o -name "build.gradle" -o -name "build.gradle.kts" \) -exec dirname {} \; > dependency_dirs.txt
+              ;;
+            "Go")
+              echo "Searching for Go dependency files..."
+              find . -name "go.mod" -exec dirname {} \; > dependency_dirs.txt
+              ;;
+            "PHP")
+              echo "Searching for PHP dependency files..."
+              find . -name "composer.json" -exec dirname {} \; > dependency_dirs.txt
+              ;;
+            *)
+              echo "Unsupported or unknown language: ${{ env.PRIMARY_LANGUAGE }}"
+              exit 1
+              ;;
+          esac
 
           # Export as a reusable list
-          PACKAGE_DIRS=$(cat package_dirs.txt | tr '\n' ' ')
-          echo "Found directories: $PACKAGE_DIRS"
-          echo "PACKAGE_DIRS=$PACKAGE_DIRS" >> $GITHUB_ENV     
+          DEPENDENCY_DIRS=$(cat dependency_dirs.txt | tr '\n' ' ')
+          echo "Found directories: $DEPENDENCY_DIRS"
+          echo "DEPENDENCY_DIRS=$DEPENDENCY_DIRS" >> $GITHUB_ENV   
           
       # Installing dependencies from package.json files of repo.
       - name: Install Dependencies
         run: |
-          for dir in ${{ env.PACKAGE_DIRS }}; do
+          for dir in ${{ env.DEPENDENCY_DIRS }}; do
             echo "Installing dependencies in $dir"
             cd "$dir" || exit
             npm install
