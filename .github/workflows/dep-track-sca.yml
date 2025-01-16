@@ -44,35 +44,76 @@ jobs:
         shell: bash
       
       # Running Dependecy Check to define unused dependencies and create txt of unused deps.
-      - name: Run Depcheck and Write to List
+      - name: Run Unused Dependency Check
         run: |
           echo "Unused Dependencies:" > unused_dependencies.txt
-          for dir in ${{ env.PACKAGE_DIRS }}; do
-            echo "Running depcheck in $dir..."
+          for dir in ${{ env.DEPENDENCY_DIRS }}; do
+            echo "Checking for unused dependencies in $dir..."
             cd "$dir" || exit
-            output=$(npx depcheck || true)
       
-            # Parse and annotate unused dependencies.
-            if echo "$output" | grep -q "Unused dependencies"; then
-              echo "$output" | sed -n '/Unused dependencies/,$p' | while IFS= read -r line; do
-                if [[ $line == "*"* ]]; then
-                  dep=$(echo "$line" | sed -E 's/\* //; s/:.*$//')
-                  echo "$dep" >> ../unused_dependencies.txt
+            case ${{ env.PRIMARY_LANGUAGE }} in
+              "JavaScript"|"TypeScript")
+                echo "Running depcheck for Node.js..."
+                output=$(npx depcheck || true)
+      
+                # Parse and annotate unused dependencies.
+                if echo "$output" | grep -q "Unused dependencies"; then
+                  echo "$output" | sed -n '/Unused dependencies/,$p' | while IFS= read -r line; do
+                    if [[ $line == "*"* ]]; then
+                      dep=$(echo "$line" | sed -E 's/\* //; s/:.*$//')
+                      echo "$dep" >> ../unused_dependencies.txt
+                    fi
+                  done
                 fi
-              done
-            fi
-
-            # Parse and annotate unused devDependencies.
-            if echo "$output" | grep -q "Unused devDependencies"; then
-              echo "$output" | sed -n '/Unused devDependencies/,$p' | while IFS= read -r line; do
-                if [[ $line == "*"* ]]; then
-                  dep=$(echo "$line" | sed -E 's/\* //; s/:.*$//')
-                  echo "$dep" >> ../unused_dependencies.txt
+      
+                # Parse and annotate unused devDependencies.
+                if echo "$output" | grep -q "Unused devDependencies"; then
+                  echo "$output" | sed -n '/Unused devDependencies/,$p' | while IFS= read -r line; do
+                    if [[ $line == "*"* ]]; then
+                      dep=$(echo "$line" | sed -E 's/\* //; s/:.*$//')
+                      echo "$dep" >> ../unused_dependencies.txt
+                    fi
+                  done
                 fi
-              done
-            fi
+                ;;
+              "Python")
+                pip install deptry
+                echo "Running deptry for Python..."
+                deptry_output=$(deptry . 2>&1 || true)
+                echo "$deptry_output" | awk -F"'" '/'\''/ {print $2}' >> unused_dependencies.txt
+                ;;
+              "Java")
+                echo "Running depclean for Java..."
+                if [ -f "pom.xml" ]; then
+                  depclean_output=$(mvn depclean:depclean || true)
+                  echo "$depclean_output" | grep -oE '^\[INFO\] - [a-zA-Z0-9._-]+' >> ../unused_dependencies.txt || true
+                else
+                  echo "No pom.xml found, skipping Java dependency check."
+                fi
+                ;;
+              "Go")
+                echo "Running unused-deps for Go..."
+                unused_deps_output=$(go run github.com/jondot/unused-deps@latest || true)
+                echo "$unused_deps_output" >> ../unused_dependencies.txt || true
+                ;;
+              "PHP")
+                echo "Running deptrac for PHP..."
+                if [ -f "deptrac.yaml" ]; then
+                  deptrac_output=$(deptrac analyse deptrac.yaml || true)
+                  echo "$deptrac_output" >> ../unused_dependencies.txt || true
+                else
+                  echo "No deptrac.yaml found, skipping PHP dependency check."
+                fi
+                ;;
+              *)
+                echo "Unsupported or unknown language: ${{ env.PRIMARY_LANGUAGE }}"
+                exit 1
+                ;;
+            esac
+      
             cd - || exit
           done
+      
           cat unused_dependencies.txt
       
       # Installing Trivy for SBOM generation.
