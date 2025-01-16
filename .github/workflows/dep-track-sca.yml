@@ -87,15 +87,13 @@ jobs:
               "JavaScript"|"TypeScript")
                 echo "Running depcheck for Node.js..."
                 output=$(npx depcheck || true)
-                echo "Output:"
-                echo "$output"
       
                 # Parse and annotate unused dependencies.
                 if echo "$output" | grep -q "Unused dependencies"; then
                   echo "$output" | sed -n '/Unused dependencies/,$p' | while IFS= read -r line; do
                     if [[ $line == "*"* ]]; then
                       dep=$(echo "$line" | sed -E 's/\* //; s/:.*$//')
-                      echo "$dep" >> unused_dependencies.txt
+                      echo "$dep" >> ../unused_dependencies.txt
                     fi
                   done
                 fi
@@ -105,7 +103,7 @@ jobs:
                   echo "$output" | sed -n '/Unused devDependencies/,$p' | while IFS= read -r line; do
                     if [[ $line == "*"* ]]; then
                       dep=$(echo "$line" | sed -E 's/\* //; s/:.*$//')
-                      echo "$dep" >> unused_dependencies.txt
+                      echo "$dep" >> ../unused_dependencies.txt
                     fi
                   done
                 fi
