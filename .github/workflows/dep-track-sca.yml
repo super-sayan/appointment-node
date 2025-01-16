@@ -63,6 +63,8 @@ jobs:
               "JavaScript"|"TypeScript")
                 echo "Running depcheck for Node.js..."
                 output=$(npx depcheck || true)
+                echo "Output:"
+                echo "$output"
       
                 # Parse and annotate unused dependencies.
                 if echo "$output" | grep -q "Unused dependencies"; then
