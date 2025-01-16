@@ -388,3 +388,9 @@ jobs:
           sarif_file: epss.sarif
           category: dependency-track
      #     token: ${{ secrets.PAT }}
+     
+      - name: Upload Test results
+        uses: actions/upload-artifact@master
+        with:
+           name: Filtered Deps
+           path: filtered_sbom.json
