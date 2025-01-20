@@ -38,6 +38,22 @@ jobs:
           echo "Found directories: $DEPENDENCY_DIRS"
           echo "DEPENDENCY_DIRS=$DEPENDENCY_DIRS" >> $GITHUB_ENV
       
+      - name: Install Dependencies
+        run: |
+          for dir in ${{ env.DEPENDENCY_DIRS }}; do
+            echo "Installing dependencies in $dir"
+            cd "$dir" || exit
+            if [ -f "package.json" ]; then
+              echo "Installing Node.js dependencies..."
+              npm install
+            if [ -f "requirements.txt" ]; then
+              echo "Installing Python dependencies..."
+              python -m pip install --upgrade pip
+              pip install -r requirements.txt
+            else
+              echo "No requirements.txt found, skipping..."
+            fi
+              
       # Running Dependecy Check to define unused dependencies and create txt of unused deps.
       - name: Run Unused Dependency Check
         run: |
