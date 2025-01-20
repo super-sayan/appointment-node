@@ -49,13 +49,13 @@ jobs:
             if [ -f "package.json" ]; then
               echo "Running depcheck for Node.js..."
               output=$(npx depcheck || true)
-              cd $path
               
               # Parse and annotate unused dependencies.
               if echo "$output" | grep -q "Unused dependencies"; then
                 echo "$output" | sed -n '/Unused dependencies/,$p' | while IFS= read -r line; do
                   if [[ $line == "*"* ]]; then
                     dep=$(echo "$line" | sed -E 's/\* //; s/:.*$//')
+                    cd $path
                     echo "$dep" >> unused_dependencies.txt
                   fi
                 done
@@ -66,6 +66,7 @@ jobs:
                 echo "$output" | sed -n '/Unused devDependencies/,$p' | while IFS= read -r line; do
                   if [[ $line == "*"* ]]; then
                     dep=$(echo "$line" | sed -E 's/\* //; s/:.*$//')
+                    cd $path
                     echo "$dep" >> unused_dependencies.txt
                   fi
                 done
