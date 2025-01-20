@@ -40,19 +40,22 @@ jobs:
       
       - name: Install Dependencies
         run: |
-          for dir in ${{ env.DEPENDENCY_DIRS }}; do
+          for dir in ./server ./client; do
             echo "Installing dependencies in $dir"
             cd "$dir" || exit
             if [ -f "package.json" ]; then
               echo "Installing Node.js dependencies..."
               npm install
+            fi  # Close the if block for package.json
+  
             if [ -f "requirements.txt" ]; then
               echo "Installing Python dependencies..."
               python -m pip install --upgrade pip
               pip install -r requirements.txt
             else
               echo "No requirements.txt found, skipping..."
-            fi
+            fi  # Close the if block for requirements.txt
+
             cd - || exit
           done
               
