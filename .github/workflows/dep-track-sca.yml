@@ -53,6 +53,8 @@ jobs:
             else
               echo "No requirements.txt found, skipping..."
             fi
+            cd - || exit
+          done
               
       # Running Dependecy Check to define unused dependencies and create txt of unused deps.
       - name: Run Unused Dependency Check
