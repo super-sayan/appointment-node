@@ -212,7 +212,7 @@ jobs:
                               resolved = details.get("resolved", "")
                               if search_name in resolved:
                                   return lockfile_path.replace("./", "")
-                  except json.JSONDecodeError:
+                  except (json.JSONDecodeError, FileNotFoundError):
                       print(f"Failed to parse {lockfile_path}")
               return "unknown-lock"
               
