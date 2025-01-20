@@ -7,6 +7,8 @@ env:
   DEPENDENCY_TRACK_BASE_URL: ${{ secrets.API_URL }} # URL of Dependency Track API server
   DEPENDENCY_TRACK_SHORT_URL: ${{ secrets.API_SURL }}
   PROJECT_NAME: ${{ github.repository }}
+  EPSS_WEIGHT: 1
+  CVSS_WEIGHT: 1
 
 jobs:
   code_analysis:
@@ -17,197 +19,68 @@ jobs:
       # Define repo for output of results.
       - name: Checkout Code
         uses: actions/checkout@v4
-
-      - name: Detect Primary Language
-        id: detect-lang
-        run: |
-          PRIMARY_LANGUAGE=$(curl -s https://api.github.com/repos/${{ github.repository }} | jq -r '.language')
-          echo "Detected Language: $PRIMARY_LANGUAGE"
-          echo "PRIMARY_LANGUAGE=$PRIMARY_LANGUAGE" >> $GITHUB_ENV
-          
-      # Define Programming Language.
+      
       - name: Setup Node.js
-        if: env.PRIMARY_LANGUAGE == 'JavaScript' || env.PRIMARY_LANGUAGE == 'TypeScript'
         uses: actions/setup-node@v4.1.0
       
       - name: Setup Python
         uses: actions/setup-python@v5.3.0
-
-      - name: Setup Java JDK
-        if: env.PRIMARY_LANGUAGE == 'Java'
-        uses: actions/setup-java@v4.6.0
         
-      - name: Setup Go
-        if: env.PRIMARY_LANGUAGE == 'Go'
-        uses: actions/setup-go@v5.2.0     
-
-      - name: Setup PHP
-        if: env.PRIMARY_LANGUAGE == 'PHP'
-        uses: shivammathur/setup-php@2.32.0
-       
       - name: Find Dependency Files
         id: locate-dependencies
         run: |
-          case ${{ env.PRIMARY_LANGUAGE }} in
-            "JavaScript"|"TypeScript")
-              echo "Searching for JavaScript/TypeScript dependency files..."
-              find . -name "package.json" -exec dirname {} \; > dependency_dirs.txt
-              ;;
-            "Python")
-              echo "Searching for Python dependency files..."
-              find . -name "requirements.txt" -exec dirname {} \; > dependency_dirs.txt
-              ;;
-            "Java")
-              echo "Searching for Java dependency files..."
-              find . \( -name "pom.xml" -o -name "build.gradle" -o -name "build.gradle.kts" \) -exec dirname {} \; > dependency_dirs.txt
-              ;;
-            "Go")
-              echo "Searching for Go dependency files..."
-              find . -name "go.mod" -exec dirname {} \; > dependency_dirs.txt
-              ;;
-            "PHP")
-              echo "Searching for PHP dependency files..."
-              find . -name "composer.json" -exec dirname {} \; > dependency_dirs.txt
-              ;;
-            *)
-              echo "Unsupported or unknown language: ${{ env.PRIMARY_LANGUAGE }}"
-              exit 1
-              ;;
-          esac
-
+          echo "Searching for JavaScript/TypeScript dependency files..."
+          find . -name "package.json" -exec dirname {} \; >> dependency_dirs.txt
+          echo "Searching for Python dependency files..."
+          find . -name "requirements.txt" -exec dirname {} \; >> dependency_dirs.txt
           # Export as a reusable list
           DEPENDENCY_DIRS=$(cat dependency_dirs.txt | tr '\n' ' ')
           echo "Found directories: $DEPENDENCY_DIRS"
-          echo "DEPENDENCY_DIRS=$DEPENDENCY_DIRS" >> $GITHUB_ENV   
-          
-      # Installing dependencies from package.json files of repo.
-      - name: Install Dependencies
-        run: |
-          for dir in ${{ env.DEPENDENCY_DIRS }}; do
-            echo "Installing dependencies in $dir"
-            cd "$dir" || exit
-            
-            case ${{ env.PRIMARY_LANGUAGE }} in
-              "JavaScript"|"TypeScript")
-                echo "Installing Node.js dependencies..."
-                npm install
-                ;;
-              "Python")
-                echo "Installing Python dependencies..."
-                if [ -f "requirements.txt" ]; then
-                  python -m pip install --upgrade pip
-                  pip install -r requirements.txt
-                else
-                  echo "No requirements.txt found, skipping..."
-                fi
-                ;;
-              "Java")
-                echo "Installing Java dependencies..."
-                if [ -f "pom.xml" ]; then
-                  mvn clean install
-                elif [ -f "build.gradle" ]; then
-                  gradle build
-                else
-                  echo "No recognized Java dependency file found, skipping..."
-                fi
-                ;;
-              "Go")
-                echo "Installing Go dependencies..."
-                if [ -f "go.mod" ]; then
-                  go mod tidy
-                else
-                  echo "No go.mod file found, skipping..."
-                fi
-                ;;
-              "PHP")
-                echo "Installing PHP dependencies..."
-                if [ -f "composer.json" ]; then
-                  composer install
-                else
-                  echo "No composer.json file found, skipping..."
-                fi
-                ;;
-              *)
-                echo "Unsupported or unknown language: ${{ env.PRIMARY_LANGUAGE }}"
-                exit 1
-                ;;
-            esac
-      
-            cd - || exit
-          done
-        shell: bash
+          echo "DEPENDENCY_DIRS=$DEPENDENCY_DIRS" >> $GITHUB_ENV
       
       # Running Dependecy Check to define unused dependencies and create txt of unused deps.
       - name: Run Unused Dependency Check
         run: |
+          path=$PWD
           echo "Unused Dependencies:" > unused_dependencies.txt
           for dir in ${{ env.DEPENDENCY_DIRS }}; do
             echo "Checking for unused dependencies in $dir..."
             cd "$dir" || exit
-      
-            case ${{ env.PRIMARY_LANGUAGE }} in
-              "JavaScript"|"TypeScript")
-                echo "Running depcheck for Node.js..."
-                output=$(npx depcheck || true)
-      
-                # Parse and annotate unused dependencies.
-                if echo "$output" | grep -q "Unused dependencies"; then
-                  echo "$output" | sed -n '/Unused dependencies/,$p' | while IFS= read -r line; do
-                    if [[ $line == "*"* ]]; then
-                      dep=$(echo "$line" | sed -E 's/\* //; s/:.*$//')
-                      echo "$dep" >> ../unused_dependencies.txt
-                    fi
-                  done
-                fi
-      
-                # Parse and annotate unused devDependencies.
-                if echo "$output" | grep -q "Unused devDependencies"; then
-                  echo "$output" | sed -n '/Unused devDependencies/,$p' | while IFS= read -r line; do
-                    if [[ $line == "*"* ]]; then
-                      dep=$(echo "$line" | sed -E 's/\* //; s/:.*$//')
-                      echo "$dep" >> ../unused_dependencies.txt
-                    fi
-                  done
-                fi
-                ;;
-              "Python")
-                pip install deptry
-                echo "Running deptry for Python..."
-                deptry_output=$(deptry . 2>&1 || true)
-                echo "$deptry_output" | awk -F"'" '/'\''/ {print $2}' >> unused_dependencies.txt
-                ;;
-              "Java")
-                echo "Running depclean for Java..."
-                if [ -f "pom.xml" ]; then
-                  depclean_output=$(mvn depclean:depclean || true)
-                  echo "$depclean_output" | grep -oE '^\[INFO\] - [a-zA-Z0-9._-]+' >> ../unused_dependencies.txt || true
-                else
-                  echo "No pom.xml found, skipping Java dependency check."
-                fi
-                ;;
-              "Go")
-                echo "Running unused-deps for Go..."
-                unused_deps_output=$(go run github.com/jondot/unused-deps@latest || true)
-                echo "$unused_deps_output" >> ../unused_dependencies.txt || true
-                ;;
-              "PHP")
-                echo "Running deptrac for PHP..."
-                if [ -f "deptrac.yaml" ]; then
-                  deptrac_output=$(deptrac analyse deptrac.yaml || true)
-                  echo "$deptrac_output" >> ../unused_dependencies.txt || true
-                else
-                  echo "No deptrac.yaml found, skipping PHP dependency check."
-                fi
-                ;;
-              *)
-                echo "Unsupported or unknown language: ${{ env.PRIMARY_LANGUAGE }}"
-                exit 1
-                ;;
-            esac
-      
+            if [ -f "package.json" ]; then
+              echo "Running depcheck for Node.js..."
+              output=$(npx depcheck || true)
+              cd $path
+              
+              # Parse and annotate unused dependencies.
+              if echo "$output" | grep -q "Unused dependencies"; then
+                echo "$output" | sed -n '/Unused dependencies/,$p' | while IFS= read -r line; do
+                  if [[ $line == "*"* ]]; then
+                    dep=$(echo "$line" | sed -E 's/\* //; s/:.*$//')
+                    echo "$dep" >> unused_dependencies.txt
+                  fi
+                done
+              fi
+
+              # Parse and annotate unused devDependencies.
+              if echo "$output" | grep -q "Unused devDependencies"; then
+                echo "$output" | sed -n '/Unused devDependencies/,$p' | while IFS= read -r line; do
+                  if [[ $line == "*"* ]]; then
+                    dep=$(echo "$line" | sed -E 's/\* //; s/:.*$//')
+                    echo "$dep" >> unused_dependencies.txt
+                  fi
+                done
+              fi
+            else
+              pip install deptry
+              echo "Running deptry for Python..."
+              deptry_output=$(deptry . 2>&1 || true)
+              cd $path
+              echo "$deptry_output" > deptry_output
+              grep "DEP002" deptry_output | awk -F"'" '{print $2}' >> unused_dependencies.txt
+            fi
             cd - || exit
           done
-      
+
           cat unused_dependencies.txt
       
       # Installing Trivy for SBOM generation.
@@ -219,34 +92,6 @@ jobs:
       - name: Generate SBOM using Trivy
         run: |
           trivy fs --format cyclonedx --output sbom.json .
-
-      # Remove unused dependecies from generated SBOM.
-      - name: Remove Unused Dependencies from SBOM
-        run: |
-          echo "Removing unused dependencies from SBOM"
-    
-          # Read unused dependencies into a list.
-          unused_deps=$(cat unused_dependencies.txt)
-    
-          # Convert the list into a JSON array of objects with `group` and `name`.
-          unused_json=$(echo "$unused_deps" | jq -R -s '
-            split("\n") | 
-            map(select(length > 0)) |
-            map(if test("^@") then 
-                  {group: (split("/")[0]), name: (split("/")[1])} 
-                else 
-                  {group: null, name: .} 
-                end)
-          ')
-
-          # Filter components, matching against both `group` and `name`.
-          jq --argjson unused "$unused_json" '
-            .components |= map(select(
-              .name as $name | 
-              .group as $group |
-              ($unused | map(.name == $name and .group == $group) | any) | not
-            ))
-          ' sbom.json > filtered_sbom.json
            
       # An official Dependecy Track action for SBOM upload, doesn't work good with full URL of Dep Track Server.
       - name: Upload SBOM to Dependency Track
@@ -256,9 +101,13 @@ jobs:
           apiKey: ${{ env.DEPENDENCY_TRACK_API_KEY }}
           projectName: ${{ env.PROJECT_NAME }}
           projectVersion: '1.0.0'
-          bomFilename: "./filtered_sbom.json"
+          bomFilename: "./sbom.json"
           autoCreate: true
-
+          
+      - name: Wait for SBOM Analysis
+        run: |
+          sleep 30
+        
       # Getting uuid of Project, that we have created on the previous step.
       - name: Fetch Project ID
         id: fetch-project
@@ -278,18 +127,19 @@ jobs:
           echo "EPSS data fetched successfully." 
         # -H "Accept: application/sarif+json" \
 
-      # Generate a consolidated dependencies file from package.json files
-      - name: Gather Dependencies from package.json Files
+      - name: Gather Dependencies from package.json and requirements.txt Files
         run: |
           python - <<EOF
           import json
           import os
+          import re
 
-          # Load package.json files and collect dependencies
-          package_dirs = "${{ env.PACKAGE_DIRS }}".split()
+          # Load package.json and requirements.txt files and collect dependencies
+          package_dirs = "${{ env.DEPENDENCY_DIRS }}".split()
           dependency_map = {}
 
           for dir_path in package_dirs:
+              # Handle package.json
               package_json_path = os.path.join(dir_path, "package.json")
               try:
                   with open(package_json_path, "r") as f:
@@ -302,6 +152,23 @@ jobs:
                           }
               except (json.JSONDecodeError, FileNotFoundError):
                   print(f"Failed to parse {package_json_path}")
+
+              # Handle requirements.txt
+              requirements_txt_path = os.path.join(dir_path, "requirements.txt")
+              try:
+                  with open(requirements_txt_path, "r") as f:
+                      for line in f:
+                          # Match dependencies of the form: package==version or package>=version
+                          match = re.match(r"^([a-zA-Z0-9_\-]+)([=><]+[0-9\.]+)?", line.strip())
+                          if match:
+                              dep = match.group(1)
+                              version = match.group(2) if match.group(2) else "unknown"
+                              dependency_map[dep] = {
+                                  "version": version,
+                                  "file": requirements_txt_path.replace("./", "")
+                              }
+              except FileNotFoundError:
+                  print(f"No requirements.txt found in {dir_path}")
 
           # Save consolidated dependencies for later use
           with open("dependency_locations.json", "w") as out_file:
@@ -333,7 +200,7 @@ jobs:
                   return "unknown"
               
               # Iterate through directories containing package-lock.json
-              package_dirs = "${{ env.PACKAGE_DIRS }}".split()
+              package_dirs = "${{ env.DEPENDENCY_DIRS }}".split()
               for dir_path in package_dirs:
                   lockfile_path = os.path.join(dir_path, "package-lock.json")
                   try:
@@ -348,32 +215,66 @@ jobs:
                       print(f"Failed to parse {lockfile_path}")
               return "unknown-lock"
               
-          def epss_score_to_level(epss_score):
+          def epss_score_to_severity(epss_score, cvss_score):
               """
-              Map EPSS score to SARIF alert levels.
+              This fucntion calculates a severity of cves based on their EPSS and CVSS scores.
               """
-              if epss_score < 0.001:
-                  return "note"
-              elif epss_score < 0.01:
-                  return "warning"
+              normalized_epss = 1
+              if epss_score > 0.6:
+                  normalized_epss = 5
+              elif epss_score > 0.3:
+                  normalized_epss = 4
+              elif epss_score > 0.1:
+                  normalized_epss = 3
+              elif epss_score >= 0.01:
+                  normalized_epss = 2
+              normalized_cvss = 1
+              if cvss_score >= 9.0:
+                  normalized_cvss = 5
+              elif cvss_score >= 7.0:
+                  normalized_cvss = 4
+              elif cvss_score >= 4.0:
+                  normalized_cvss = 3
+              elif cvss_score >= 0.1:
+                  normalized_cvss = 2
+              severity = round((${{ env.CVSS_WEIGHT }} * normalized_cvss + ${{ env.EPSS_WEIGHT }} * normalized_epss) / (${{ env.CVSS_WEIGHT }} + ${{ env.EPSS_WEIGHT }}))
+              if severity == 1:
+                  return "0"
+              elif severity == 2:
+                  return "2"
+              elif severity == 3:
+                  return "5"
+              elif severity == 4:
+                  return "8"
               else:
-                  return "error"
+                  return "10"
+              return str(severity*2)
                   
           def find_dependency_line(file_path, dependency_name):
               """
-              Find the line number of the dependency in the package.json file.
+              Find the line number of the dependency in a file, supporting both JSON and plain text formats.
               """
               try:
                   with open(file_path, "r") as file:
                       lines = file.readlines()
-                      for i, line in enumerate(lines, start=1):
-                          # Match the dependency name in a JSON line
-                          if re.search(f'"{re.escape(dependency_name)}"', line):
-                              return i
+            
+                      # Detect file format based on extension
+                      if file_path.endswith(('.json', '.lock')):  # JSON-based files
+                          for i, line in enumerate(lines, start=1):
+                              # Match the dependency name as a JSON key
+                              if re.search(f'"{re.escape(dependency_name)}"', line):
+                                  return i
+                      elif file_path.endswith('.txt'):  # Plain text files like requirements.txt
+                          for i, line in enumerate(lines, start=1):
+                              # Match the dependency name in the line (e.g., Flask==2.2.3 or Flask>=2.2.0)
+                              if re.match(f'^{re.escape(dependency_name)}([=><!].*)?$', line.strip(), re.IGNORECASE):
+                                  return i
               except FileNotFoundError:
                   print(f"File not found: {file_path}")
+              except json.JSONDecodeError:
+                  print(f"Failed to parse JSON in file: {file_path}")
               return 1  # Default to line 1 if not found
-    
+          
           def transform_epss_to_sarif(input_json_path, output_sarif_path):
               """
               Transform EPSS JSON into SARIF format.
@@ -410,7 +311,11 @@ jobs:
           
               rules = []
               results = []
-          
+              
+              unused_deps = ""
+              with open("unused_dependencies.txt", "r") as file:
+                  unused_deps = file.read()
+                  
               for entry in epss_data:
                   component = entry["component"]
                   vulnerability = entry["vulnerability"]
@@ -421,8 +326,12 @@ jobs:
                   else:
                       file_path = find_dep_location(component["purl"])
                   epss_score = vulnerability.get("epssScore", 0)
-                  level = epss_score_to_level(epss_score)
-          
+                  cvss_score = vulnerability.get("cvssV3BaseScore", 0)
+                  severity = "0"
+                  usage = "unused dependency"
+                  if dep_name not in unused_deps: 
+                      severity = epss_score_to_severity(epss_score, cvss_score)
+                      usage = "dependency in use"
                   # Add rule if not already added
                   rule = {
                       "id": vulnerability["vulnId"],
@@ -431,13 +340,13 @@ jobs:
                           "text": vulnerability["description"]
                       },
                       "defaultConfiguration": {
-                          "level": level
+                          "level": "note"
                       },
                       "helpUri": f"https://nvd.nist.gov/vuln/detail/{vulnerability['vulnId']}",
                       "help": {
                           "text": (
                               f"Vulnerability {vulnerability['vulnId']}\n"
-                              f"Severity: {vulnerability['severity']}\n"
+                              f"cvssScore: {cvss_score}\n"
                               f"Package: {component['purl']}\n"
                               f"epssScore: {epss_score}\n"
                               f"Link: [CVE-{vulnerability['vulnId']}](https://nvd.nist.gov/vuln/detail/{vulnerability['vulnId']})\n"
@@ -445,19 +354,19 @@ jobs:
                           ),
                           "markdown": (
                               f"**Vulnerability {vulnerability['vulnId']}**\n"
-                              f"| Severity | Package | epssScore | Link |\n"
+                              f"| cvssScore | Package | epssScore | Link |\n"
                               f"| --- | --- | --- | --- |\n"
-                              f"|{vulnerability['severity']}|{component['purl']}|{epss_score}|"
+                              f"|{cvss_score}|{component['purl']}|{epss_score}|"
                               f"[CVE-{vulnerability['vulnId']}](https://nvd.nist.gov/vuln/detail/{vulnerability['vulnId']})|\n\n"
                               f"{vulnerability['description']}"
                           )
                       },
                       "properties": {
-                          "security-severity": str(vulnerability.get("cvssV3BaseScore", 0)),
+                          "security-severity": severity,
                           "tags": [
                               "vulnerability",
                               "security",
-                              vulnerability["severity"]
+                              usage
                           ]
                       }
                   }
@@ -467,11 +376,11 @@ jobs:
                   # Add result
                   result = {
                       "ruleId": vulnerability["vulnId"],
-                      "level": level,
+                      "level": "note",
                       "message": {
                           "text": (
                               f"Vulnerability {vulnerability['vulnId']}\n"
-                              f"Severity: {vulnerability['severity']}\n"
+                              f"cvssScore: {cvss_score}\n"
                               f"Package: {component['purl']}\n"
                               f"epssScore: {epss_score}\n"
                               f"Link: [CVE-{vulnerability['vulnId']}](https://nvd.nist.gov/vuln/detail/{vulnerability['vulnId']})"
