@@ -36,29 +36,8 @@ jobs:
           # Export as a reusable list
           DEPENDENCY_DIRS=$(cat dependency_dirs.txt | tr '\n' ' ')
           echo "Found directories: $DEPENDENCY_DIRS"
-          echo "DEPENDENCY_DIRS=$DEPENDENCY_DIRS" >> $GITHUB_ENV
+          echo "DEPENDENCY_DIRS=$DEPENDENCY_DIRS" >> $GITHUB_ENV          
       
-      - name: Install Dependencies
-        run: |
-          for dir in ./server ./client; do
-            echo "Installing dependencies in $dir"
-            cd "$dir" || exit
-            if [ -f "package.json" ]; then
-              echo "Installing Node.js dependencies..."
-              npm install
-            fi  # Close the if block for package.json
-  
-            if [ -f "requirements.txt" ]; then
-              echo "Installing Python dependencies..."
-              python -m pip install --upgrade pip
-              pip install -r requirements.txt
-            else
-              echo "No requirements.txt found, skipping..."
-            fi  # Close the if block for requirements.txt
-
-            cd - || exit
-          done
-              
       # Running Dependecy Check to define unused dependencies and create txt of unused deps.
       - name: Run Unused Dependency Check
         run: |
@@ -100,7 +79,7 @@ jobs:
               echo "$deptry_output" > deptry_output
               grep "DEP002" deptry_output | awk -F"'" '{print $2}' >> unused_dependencies.txt
             fi
-            cd - || exit
+            cd $path || exit
           done
 
           cat unused_dependencies.txt
@@ -126,7 +105,7 @@ jobs:
           
       - name: Wait for SBOM Analysis
         run: |
-          sleep 30
+          sleep 60
         
       # Getting uuid of Project, that we have created on the previous step.
       - name: Fetch Project ID
