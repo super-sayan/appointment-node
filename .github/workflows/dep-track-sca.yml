@@ -368,17 +368,17 @@ jobs:
                       "help": {
                           "text": (
                               f"Vulnerability {vulnerability['vulnId']}\n"
-                              f"cvssScore: {cvss_score}\n"
                               f"Package: {component['purl']}\n"
+                              f"cvssScore: {cvss_score}\n"
                               f"epssScore: {epss_score}\n"
                               f"Link: [CVE-{vulnerability['vulnId']}](https://nvd.nist.gov/vuln/detail/{vulnerability['vulnId']})\n"
                               f"{vulnerability['description']}"
                           ),
                           "markdown": (
                               f"**Vulnerability {vulnerability['vulnId']}**\n"
-                              f"| cvssScore | Package | epssScore | Link |\n"
+                              f"| Package | cvssScore | epssScore | Link |\n"
                               f"| --- | --- | --- | --- |\n"
-                              f"|{cvss_score}|{component['purl']}|{epss_score}|"
+                              f"|{component['purl']}|{cvss_score}|{epss_score}|"
                               f"[CVE-{vulnerability['vulnId']}](https://nvd.nist.gov/vuln/detail/{vulnerability['vulnId']})|\n\n"
                               f"{vulnerability['description']}"
                           )
@@ -402,8 +402,8 @@ jobs:
                       "message": {
                           "text": (
                               f"Vulnerability {vulnerability['vulnId']}\n"
-                              f"cvssScore: {cvss_score}\n"
                               f"Package: {component['purl']}\n"
+                              f"cvssScore: {cvss_score}\n"
                               f"epssScore: {epss_score}\n"
                               f"Link: [CVE-{vulnerability['vulnId']}](https://nvd.nist.gov/vuln/detail/{vulnerability['vulnId']})"
                           )
