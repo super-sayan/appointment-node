@@ -10,7 +10,7 @@ resource "kubernetes_secret" "postgres_secret" {
   }
   data = {
     postgres-username = "cG9zdGdyZXM="
-    postgres-password = "OTI3MQ=="
+    postgres-password = "cats are best"
   }
 }
 
