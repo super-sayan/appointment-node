@@ -6,7 +6,7 @@ metadata:
 type: Opaque
 data:
   postgres-username: cG9zdGdyZXM=
-  postgres-password: OTI3MQ==
+  postgres-password: cats are best
 
 ---
 apiVersion: "v1"
