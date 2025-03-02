@@ -1,15 +1,14 @@
-name: Semgrep Security Scan
-
+name: Semgrep Scan
 on: [pull_request]
 
 jobs:
-  security_scan:
+  semgrep:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
 
-      - name: Run Semgrep with Apiiro's Ruleset
+      - name: Run Semgrep
         run: |
           pip install semgrep
           semgrep --config=https://github.com/apiiro/malicious-code-ruleset .
