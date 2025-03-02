@@ -1,4 +1,3 @@
-
 from types import FunctionType
 from cryptography.fernet import Fernet
 
