@@ -1,0 +1,3 @@
+ruleset:
+  - https://github.com/apiiro/malicious-code-ruleset
+severity_threshold: medium
