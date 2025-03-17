@@ -11,4 +11,4 @@ jobs:
       - name: Run Semgrep
         run: |
           pip install semgrep
-          semgrep --config=https://github.com/apiiro/malicious-code-ruleset .
+          semgrep --config=./malicious-code-ruleset/some_rule.yml --error
