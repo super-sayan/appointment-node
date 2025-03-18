@@ -61,14 +61,14 @@ jobs:
                 
                 // Constructing the comment body with all details
                 const commentBody = `
-## 🚨 Semgrep Alert
+                ## 🚨 Semgrep Alert
 
-🔴 **${message}**
+                🔴 **${message}**
 
-📌 **File**: \`${file}\`  
-📌 **Line(s)**: \`${line}\`  
-📌 **Rule Name**: \`${rule}\`  
-📌 **Description**: ${description}
+                📌 **File**: \`${file}\`  
+                📌 **Line(s)**: \`${line}\`  
+                📌 **Rule Name**: \`${rule}\`  
+                📌 **Description**: ${description}
                 `;
 
                 github.rest.issues.createComment({
