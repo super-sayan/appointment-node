@@ -8,7 +8,11 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v3
 
-      - name: Run Semgrep
-        uses: returntocorp/semgrep-action@v1
-        with:
-          config: ".semgrep-config.json"
+      - name: Install Semgrep
+        run: pip install semgrep
+
+      - name: Clone malicious-code-ruleset
+        run: git clone https://github.com/apiiro/malicious-code-ruleset.git
+
+      - name: Run Semgrep with Ruleset
+        run: semgrep --config=malicious-code-ruleset --error
