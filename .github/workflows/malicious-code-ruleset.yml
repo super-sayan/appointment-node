@@ -97,22 +97,22 @@ jobs:
                           findings.append(finding)
           
           # Create output for GitHub Actions
-          comment_body = f'## Semgrep Security Scan Results\n\n'
+          comment_body = f'## Semgrep Security Scan Results\\n\\n'
           
           if findings:
-              comment_body += f'Found {len(findings)} potential security issues:\n\n'
+              comment_body += f'Found {len(findings)} potential security issues:\\n\\n'
               
               for i, finding in enumerate(findings, 1):
                   emoji = '🔴' if finding['severity'].upper() in ['ERROR', 'HIGH'] else '🟠' if finding['severity'].upper() in ['WARNING', 'MEDIUM'] else '🟡'
-                  comment_body += f'{emoji} **{finding['rule_id']}** ({finding['severity']})\n'
-                  comment_body += f'- File: `{finding['file_path']}`\n'
-                  comment_body += f'- Lines: {finding['start_line']}-{finding['end_line']}\n'
-                  comment_body += f'- Message: {finding['message']}\n\n'
+                  comment_body += f'{emoji} **{finding[\"rule_id\"]}** ({finding[\"severity\"]})\\n'
+                  comment_body += f'- File: `{finding[\"file_path\"]}`\\n'
+                  comment_body += f'- Lines: {finding[\"start_line\"]}-{finding[\"end_line\"]}\\n'
+                  comment_body += f'- Message: {finding[\"message\"]}\\n\\n'
           else:
-              comment_body += '✅ No security issues found! Great job!\n'
+              comment_body += '✅ No security issues found! Great job!\\n'
           
           with open(os.environ['GITHUB_OUTPUT'], 'a') as f:
-              f.write(f'comment_body<<EOF\n{comment_body}\nEOF\n')
+              f.write(f'comment_body<<EOF\\n{comment_body}\\nEOF\\n')
           "
         env:
           PR_NUMBER: ${{ github.event.pull_request.number }}
@@ -132,4 +132,3 @@ jobs:
               issue_number: prNumber,
               body: commentBody
             });
-
