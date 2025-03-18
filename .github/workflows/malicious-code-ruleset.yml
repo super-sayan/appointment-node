@@ -52,6 +52,12 @@ jobs:
           python3 -c "
           import json
           import os
+          import base64
+          
+          # Get repository info for creating links
+          repo = os.environ['GITHUB_REPOSITORY']
+          sha = os.environ['GITHUB_SHA']
+          pr_head_sha = os.environ.get('GITHUB_PR_HEAD_SHA', sha)
           
           with open('semgrep-results.sarif', 'r') as f:
               sarif_data = json.load(f)
@@ -82,6 +88,24 @@ jobs:
                           start_line = region.get('startLine', 0)
                           end_line = region.get('endLine', start_line)
                           
+                          # Get code snippet if available
+                          snippet = None
+                          if 'physicalLocation' in location and 'contextRegion' in location['physicalLocation']:
+                              snippet_text = location['physicalLocation'].get('contextRegion', {}).get('snippet', {}).get('text', '')
+                              if not snippet_text and os.path.exists(file_path):
+                                  try:
+                                      with open(file_path, 'r') as code_file:
+                                          lines = code_file.readlines()
+                                          # Get 3 lines before and after for context, if available
+                                          start_idx = max(0, start_line - 4)
+                                          end_idx = min(len(lines), end_line + 3)
+                                          snippet_text = ''.join(lines[start_idx:end_idx])
+                                  except:
+                                      snippet_text = ''
+                              
+                              if snippet_text:
+                                  snippet = snippet_text
+                          
                           # Create formatted finding
                           finding = {
                               'rule_id': rule_id,
@@ -89,7 +113,8 @@ jobs:
                               'severity': severity,
                               'file_path': file_path,
                               'start_line': start_line,
-                              'end_line': end_line
+                              'end_line': end_line,
+                              'snippet': snippet
                           }
                           findings.append(finding)
           
@@ -102,10 +127,36 @@ jobs:
                   
                   for i, finding in enumerate(findings, 1):
                       emoji = '🔴' if finding['severity'].upper() in ['ERROR', 'HIGH'] else '🟠' if finding['severity'].upper() in ['WARNING', 'MEDIUM'] else '🟡'
-                      f.write(f'{emoji} **{finding[\"rule_id\"]}** ({finding[\"severity\"]})\n')
-                      f.write(f'- File: `{finding[\"file_path\"]}`\n')
+                      
+                      # Create GitHub link to the file location
+                      file_path = finding['file_path']
+                      start_line = finding['start_line']
+                      end_line = finding['end_line']
+                      
+                      if file_path and file_path != 'Unknown file' and start_line > 0:
+                          file_link = f'https://github.com/{repo}/blob/{pr_head_sha}/{file_path}#L{start_line}-L{end_line}'
+                          f.write(f'{emoji} **{finding[\"rule_id\"]}** ({finding[\"severity\"]})\n')
+                          f.write(f'- File: [`{file_path}`]({file_link})\n')
+                      else:
+                          f.write(f'{emoji} **{finding[\"rule_id\"]}** ({finding[\"severity\"]})\n')
+                          if file_path and file_path != 'Unknown file':
+                              f.write(f'- File: `{file_path}`\n')
+                          else:
+                              f.write(f'- File: `Unknown`\n')
+                              
                       f.write(f'- Lines: {finding[\"start_line\"]}-{finding[\"end_line\"]}\n')
-                      f.write(f'- Message: {finding[\"message\"]}\n\n')
+                      f.write(f'- Message: {finding[\"message\"]}\n')
+                      
+                      # Add code snippet if available
+                      if finding['snippet']:
+                          f.write('\n<details>\n')
+                          f.write('<summary>Code Snippet</summary>\n\n')
+                          f.write('```\n')
+                          f.write(finding['snippet'])
+                          f.write('\n```\n')
+                          f.write('</details>\n')
+                      
+                      f.write('\n')
               else:
                   f.write('✅ No security issues found! Great job!\n')
           
@@ -114,6 +165,11 @@ jobs:
           with open(os.environ['GITHUB_OUTPUT'], 'a') as f:
               f.write(f'has_findings={has_findings}\n')
           "
+        env:
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_SHA: ${{ github.sha }}
+          GITHUB_PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
       
       - name: Comment on Pull Request
         uses: actions/github-script@v6
