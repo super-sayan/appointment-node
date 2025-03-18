@@ -57,7 +57,6 @@ jobs:
                 const file = result.locations[0].physicalLocation.artifactLocation.uri;
                 const line = result.locations[0].physicalLocation.region.startLine;
                 const rule = result.ruleId;  // Rule name
-                const description = result.rule.description;  // Description of the rule
                 
                 // Constructing the comment body with all details
                 const commentBody = `
