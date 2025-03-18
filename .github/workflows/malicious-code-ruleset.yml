@@ -22,6 +22,8 @@ on: [pull_request]
 jobs:
   semgrep:
     runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write  # Required to post comments in PR
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
@@ -32,10 +34,43 @@ jobs:
       - name: Clone malicious-code-ruleset
         run: git clone https://github.com/apiiro/malicious-code-ruleset.git
 
-      - name: Run Semgrep with Ruleset and Output SARIF
+      - name: Run Semgrep with SARIF Output
         run: semgrep --config=malicious-code-ruleset --sarif --output=semgrep-results.sarif
 
       - name: Upload SARIF Report to GitHub Security Tab
         uses: github/codeql-action/upload-sarif@v3
         with:
           sarif_file: semgrep-results.sarif
+
+      - name: Post Findings as PR Comment
+        uses: actions/github-script@v6
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const fs = require('fs');
+            const sarifFile = 'semgrep-results.sarif';
+            const sarifData = JSON.parse(fs.readFileSync(sarifFile, 'utf8'));
+
+            let commentBody = '## 🚨 Semgrep Scan Results\n\n';
+            let hasFindings = false;
+
+            sarifData.runs.forEach(run => {
+              run.results.forEach(result => {
+                hasFindings = true;
+                const message = result.message.text;
+                const file = result.locations[0].physicalLocation.artifactLocation.uri;
+                const line = result.locations[0].physicalLocation.region.startLine;
+                
+                commentBody += `🔴 **${message}**\n📌 *File:* \`${file}\` (Line ${line})\n\n`;
+              });
+            });
+
+            if (hasFindings) {
+              github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.payload.pull_request.number,
+                body: commentBody
+              });
+            }
+
