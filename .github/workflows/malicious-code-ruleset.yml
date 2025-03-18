@@ -42,7 +42,7 @@ jobs:
         with:
           sarif_file: semgrep-results.sarif
 
-      - name: Post Findings as PR Comment
+      - name: Post Each Finding as Separate PR Comment
         uses: actions/github-script@v6
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
@@ -51,26 +51,32 @@ jobs:
             const sarifFile = 'semgrep-results.sarif';
             const sarifData = JSON.parse(fs.readFileSync(sarifFile, 'utf8'));
 
-            let commentBody = '## 🚨 Semgrep Scan Results\n\n';
-            let hasFindings = false;
-
             sarifData.runs.forEach(run => {
               run.results.forEach(result => {
-                hasFindings = true;
                 const message = result.message.text;
                 const file = result.locations[0].physicalLocation.artifactLocation.uri;
                 const line = result.locations[0].physicalLocation.region.startLine;
+                const rule = result.ruleId;  // Rule name
+                const description = result.rule.description;  // Description of the rule
                 
-                commentBody += `🔴 **${message}**\n📌 *File:* \`${file}\` (Line ${line})\n\n`;
+                // Constructing the comment body with all details
+                const commentBody = `
+## 🚨 Semgrep Alert
+
+🔴 **${message}**
+
+📌 **File**: \`${file}\`  
+📌 **Line(s)**: \`${line}\`  
+📌 **Rule Name**: \`${rule}\`  
+📌 **Description**: ${description}
+                `;
+
+                github.rest.issues.createComment({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: context.payload.pull_request.number,
+                  body: commentBody
+                });
               });
             });
-
-            if (hasFindings) {
-              github.rest.issues.createComment({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                issue_number: context.payload.pull_request.number,
-                body: commentBody
-              });
-            }
 
