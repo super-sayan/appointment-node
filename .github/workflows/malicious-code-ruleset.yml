@@ -1,3 +1,21 @@
+#name: Semgrep Scan
+#on: [pull_request]
+
+#jobs:
+  #semgrep:
+    #runs-on: ubuntu-latest
+    #steps:
+      #- name: Checkout code
+        #uses: actions/checkout@v3
+
+      #- name: Install Semgrep
+        #run: pip install semgrep
+
+      #- name: Clone malicious-code-ruleset
+        #run: git clone https://github.com/apiiro/malicious-code-ruleset.git
+
+      #- name: Run Semgrep with Ruleset
+        #run: semgrep --config=malicious-code-ruleset --error
 name: Semgrep Scan
 on: [pull_request]
 
@@ -14,5 +32,10 @@ jobs:
       - name: Clone malicious-code-ruleset
         run: git clone https://github.com/apiiro/malicious-code-ruleset.git
 
-      - name: Run Semgrep with Ruleset
-        run: semgrep --config=malicious-code-ruleset --error
+      - name: Run Semgrep with Ruleset and Output SARIF
+        run: semgrep --config=malicious-code-ruleset --sarif --output=semgrep-results.sarif
+
+      - name: Upload SARIF Report to GitHub Security Tab
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: semgrep-results.sarif
