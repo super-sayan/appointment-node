@@ -45,131 +45,122 @@ jobs:
         with:
           sarif_file: semgrep-results.sarif
       
-      - name: Process Semgrep Results
-        id: process-results
+      - name: Generate Clickable Findings
+        id: generate-findings
         run: |
-          # Create a file with the comment content
-          python3 -c "
+          echo "Generating clickable findings report..."
+          python3 <<EOF
           import json
           import os
-          import base64
           
-          # Get repository info for creating links
+          # GitHub repository information
           repo = os.environ['GITHUB_REPOSITORY']
-          sha = os.environ['GITHUB_SHA']
-          pr_head_sha = os.environ.get('GITHUB_PR_HEAD_SHA', sha)
+          base_url = f"https://github.com/{repo}"
+          pr_head_sha = os.environ.get('GITHUB_PR_HEAD_SHA')
           
-          with open('semgrep-results.sarif', 'r') as f:
-              sarif_data = json.load(f)
-          
-          findings = []
-          
-          if 'runs' in sarif_data:
-              for run in sarif_data['runs']:
-                  if 'results' in run:
-                      for result in run['results']:
-                          message = result.get('message', {}).get('text', 'No message provided')
-                          rule_id = result.get('ruleId', 'Unknown rule')
-                          severity = 'Unknown'
-                          
-                          # Try to extract severity from tags or properties
-                          if 'properties' in result and 'severity' in result['properties']:
-                              severity = result['properties']['severity']
-                          elif 'tags' in result:
-                              for tag in result['tags']:
-                                  if tag.startswith('severity:'):
-                                      severity = tag.split(':')[1]
-                          
-                          # Get location info
-                          location = result.get('locations', [{}])[0]
-                          file_path = location.get('physicalLocation', {}).get('artifactLocation', {}).get('uri', 'Unknown file')
-                          
-                          region = location.get('physicalLocation', {}).get('region', {})
-                          start_line = region.get('startLine', 0)
-                          end_line = region.get('endLine', start_line)
-                          
-                          # Get code snippet if available
-                          snippet = None
-                          if 'physicalLocation' in location and 'contextRegion' in location['physicalLocation']:
-                              snippet_text = location['physicalLocation'].get('contextRegion', {}).get('snippet', {}).get('text', '')
-                              if not snippet_text and os.path.exists(file_path):
-                                  try:
+          try:
+              with open('semgrep-results.sarif', 'r') as f:
+                  sarif_data = json.load(f)
+              
+              findings = []
+              
+              if 'runs' in sarif_data:
+                  for run in sarif_data['runs']:
+                      if 'results' in run:
+                          for result in run['results']:
+                              message = result.get('message', {}).get('text', 'No message provided')
+                              rule_id = result.get('ruleId', 'Unknown rule')
+                              severity = 'Unknown'
+                              
+                              # Extract severity
+                              if 'properties' in result and 'severity' in result['properties']:
+                                  severity = result['properties']['severity']
+                              elif 'tags' in result:
+                                  for tag in result['tags']:
+                                      if tag.startswith('severity:'):
+                                          severity = tag.split(':')[1]
+                              
+                              # Get location info
+                              location = result.get('locations', [{}])[0]
+                              file_path = location.get('physicalLocation', {}).get('artifactLocation', {}).get('uri', 'Unknown file')
+                              
+                              region = location.get('physicalLocation', {}).get('region', {})
+                              start_line = region.get('startLine', 0)
+                              end_line = region.get('endLine', start_line)
+                              
+                              # Try to get code snippet
+                              snippet = None
+                              try:
+                                  if os.path.exists(file_path):
                                       with open(file_path, 'r') as code_file:
                                           lines = code_file.readlines()
-                                          # Get 3 lines before and after for context, if available
-                                          start_idx = max(0, start_line - 4)
-                                          end_idx = min(len(lines), end_line + 3)
-                                          snippet_text = ''.join(lines[start_idx:end_idx])
-                                  except:
-                                      snippet_text = ''
+                                          start_idx = max(0, start_line - 3)
+                                          end_idx = min(len(lines), end_line + 2)
+                                          snippet = ''.join(lines[start_idx:end_idx])
+                              except Exception as e:
+                                  print(f"Error getting snippet: {e}")
+                                  snippet = None
                               
-                              if snippet_text:
-                                  snippet = snippet_text
-                          
-                          # Create formatted finding
-                          finding = {
-                              'rule_id': rule_id,
-                              'message': message,
-                              'severity': severity,
-                              'file_path': file_path,
-                              'start_line': start_line,
-                              'end_line': end_line,
-                              'snippet': snippet
-                          }
-                          findings.append(finding)
-          
-          # Create the comment content
-          with open('comment.md', 'w') as f:
-              f.write('## Semgrep Security Scan Results\n\n')
+                              findings.append({
+                                  'rule_id': rule_id,
+                                  'message': message,
+                                  'severity': severity,
+                                  'file_path': file_path,
+                                  'start_line': start_line,
+                                  'end_line': end_line,
+                                  'snippet': snippet
+                              })
               
-              if findings:
-                  f.write(f'Found {len(findings)} potential security issues:\n\n')
+              # Write findings to a markdown file
+              with open('findings.md', 'w') as f:
+                  f.write('## Semgrep Security Scan Results\n\n')
                   
-                  for i, finding in enumerate(findings, 1):
-                      emoji = '🔴' if finding['severity'].upper() in ['ERROR', 'HIGH'] else '🟠' if finding['severity'].upper() in ['WARNING', 'MEDIUM'] else '🟡'
+                  if findings:
+                      f.write(f'Found {len(findings)} potential security issues:\n\n')
                       
-                      # Create GitHub link to the file location
-                      file_path = finding['file_path']
-                      start_line = finding['start_line']
-                      end_line = finding['end_line']
-                      
-                      if file_path and file_path != 'Unknown file' and start_line > 0:
-                          file_link = f'https://github.com/{repo}/blob/{pr_head_sha}/{file_path}#L{start_line}-L{end_line}'
-                          f.write(f'{emoji} **{finding[\"rule_id\"]}** ({finding[\"severity\"]})\n')
-                          f.write(f'- File: [`{file_path}`]({file_link})\n')
-                      else:
-                          f.write(f'{emoji} **{finding[\"rule_id\"]}** ({finding[\"severity\"]})\n')
-                          if file_path and file_path != 'Unknown file':
-                              f.write(f'- File: `{file_path}`\n')
+                      for i, finding in enumerate(findings, 1):
+                          # Select emoji based on severity
+                          if finding['severity'].upper() in ['ERROR', 'HIGH']:
+                              emoji = '🔴'
+                          elif finding['severity'].upper() in ['WARNING', 'MEDIUM']:
+                              emoji = '🟠'
                           else:
-                              f.write(f'- File: `Unknown`\n')
-                              
-                      f.write(f'- Lines: {finding[\"start_line\"]}-{finding[\"end_line\"]}\n')
-                      f.write(f'- Message: {finding[\"message\"]}\n')
-                      
-                      # Add code snippet if available
-                      if finding['snippet']:
-                          f.write('\n<details>\n')
-                          f.write('<summary>Code Snippet</summary>\n\n')
-                          f.write('```\n')
-                          f.write(finding['snippet'])
-                          f.write('\n```\n')
-                          f.write('</details>\n')
-                      
-                      f.write('\n')
-              else:
-                  f.write('✅ No security issues found! Great job!\n')
-          
-          # Set has_findings flag for GitHub Actions
-          has_findings = 'true' if findings else 'false'
-          with open(os.environ['GITHUB_OUTPUT'], 'a') as f:
-              f.write(f'has_findings={has_findings}\n')
-          "
-        env:
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-          GITHUB_REPOSITORY: ${{ github.repository }}
-          GITHUB_SHA: ${{ github.sha }}
-          GITHUB_PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+                              emoji = '🟡'
+                          
+                          f.write(f"### {emoji} Issue #{i}: {finding['rule_id']} ({finding['severity']})\n\n")
+                          
+                          # Create clickable link
+                          file_path = finding['file_path']
+                          start_line = finding['start_line']
+                          
+                          if file_path != 'Unknown file' and start_line > 0 and pr_head_sha:
+                              file_link = f"{base_url}/blob/{pr_head_sha}/{file_path}#L{start_line}"
+                              f.write(f"**File:** [{file_path}]({file_link}) (Lines {start_line}-{finding['end_line']})\n\n")
+                          else:
+                              f.write(f"**File:** {file_path} (Lines {start_line}-{finding['end_line']})\n\n")
+                          
+                          f.write(f"**Message:** {finding['message']}\n\n")
+                          
+                          # Include code snippet in collapsible section
+                          if finding['snippet']:
+                              f.write("<details>\n")
+                              f.write("<summary>Show code snippet</summary>\n\n")
+                              f.write("```\n")
+                              f.write(finding['snippet'])
+                              f.write("\n```\n")
+                              f.write("</details>\n\n")
+                          
+                          f.write("---\n\n")
+                  else:
+                      f.write('✅ No security issues found! Great job!\n')
+              
+              print("Findings report generated successfully")
+          except Exception as e:
+              print(f"Error generating findings: {e}")
+              with open('findings.md', 'w') as f:
+                  f.write('## Semgrep Security Scan Results\n\n')
+                  f.write(f'⚠️ Error processing scan results: {e}\n')
+          EOF
       
       - name: Comment on Pull Request
         uses: actions/github-script@v6
@@ -179,13 +170,23 @@ jobs:
             const fs = require('fs');
             const prNumber = context.issue.number;
             
-            // Read the comment content from file
-            const commentBody = fs.readFileSync('comment.md', 'utf8');
-            
-            // Create a comment on the PR
-            await github.rest.issues.createComment({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: prNumber,
-              body: commentBody
-            });
+            try {
+              // Read the findings markdown
+              const commentBody = fs.readFileSync('findings.md', 'utf8');
+              
+              // Post as comment
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: prNumber,
+                body: commentBody
+              });
+              
+              console.log("Comment posted successfully");
+            } catch (error) {
+              console.error("Error posting comment:", error);
+              core.setFailed(`Error posting comment: ${error.message}`);
+            }
+        env:
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
