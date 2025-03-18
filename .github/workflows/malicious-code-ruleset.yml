@@ -11,4 +11,4 @@ jobs:
       - name: Run Semgrep
         uses: returntocorp/semgrep-action@v1
         with:
-          config: ".semgrep-config.json"
+          config: "https://github.com/apiiro/malicious-code-ruleset"
