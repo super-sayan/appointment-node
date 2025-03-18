@@ -45,16 +45,13 @@ jobs:
         with:
           sarif_file: semgrep-results.sarif
       
-      - name: Process Semgrep Results into Comments
+      - name: Process Semgrep Results
         id: process-results
         run: |
-          # Extract findings from SARIF and create comments
-          python -c "
+          # Create a file with the comment content
+          python3 -c "
           import json
           import os
-          
-          pr_number = os.environ['PR_NUMBER']
-          repo = os.environ['GITHUB_REPOSITORY']
           
           with open('semgrep-results.sarif', 'r') as f:
               sarif_data = json.load(f)
@@ -96,34 +93,38 @@ jobs:
                           }
                           findings.append(finding)
           
-          # Create output for GitHub Actions
-          comment_body = f'## Semgrep Security Scan Results\\n\\n'
-          
-          if findings:
-              comment_body += f'Found {len(findings)} potential security issues:\\n\\n'
+          # Create the comment content
+          with open('comment.md', 'w') as f:
+              f.write('## Semgrep Security Scan Results\n\n')
               
-              for i, finding in enumerate(findings, 1):
-                  emoji = '🔴' if finding['severity'].upper() in ['ERROR', 'HIGH'] else '🟠' if finding['severity'].upper() in ['WARNING', 'MEDIUM'] else '🟡'
-                  comment_body += f'{emoji} **{finding[\"rule_id\"]}** ({finding[\"severity\"]})\\n'
-                  comment_body += f'- File: `{finding[\"file_path\"]}`\\n'
-                  comment_body += f'- Lines: {finding[\"start_line\"]}-{finding[\"end_line\"]}\\n'
-                  comment_body += f'- Message: {finding[\"message\"]}\\n\\n'
-          else:
-              comment_body += '✅ No security issues found! Great job!\\n'
+              if findings:
+                  f.write(f'Found {len(findings)} potential security issues:\n\n')
+                  
+                  for i, finding in enumerate(findings, 1):
+                      emoji = '🔴' if finding['severity'].upper() in ['ERROR', 'HIGH'] else '🟠' if finding['severity'].upper() in ['WARNING', 'MEDIUM'] else '🟡'
+                      f.write(f'{emoji} **{finding[\"rule_id\"]}** ({finding[\"severity\"]})\n')
+                      f.write(f'- File: `{finding[\"file_path\"]}`\n')
+                      f.write(f'- Lines: {finding[\"start_line\"]}-{finding[\"end_line\"]}\n')
+                      f.write(f'- Message: {finding[\"message\"]}\n\n')
+              else:
+                  f.write('✅ No security issues found! Great job!\n')
           
+          # Set has_findings flag for GitHub Actions
+          has_findings = 'true' if findings else 'false'
           with open(os.environ['GITHUB_OUTPUT'], 'a') as f:
-              f.write(f'comment_body<<EOF\\n{comment_body}\\nEOF\\n')
+              f.write(f'has_findings={has_findings}\n')
           "
-        env:
-          PR_NUMBER: ${{ github.event.pull_request.number }}
       
       - name: Comment on Pull Request
         uses: actions/github-script@v6
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
+            const fs = require('fs');
             const prNumber = context.issue.number;
-            const commentBody = `${{ steps.process-results.outputs.comment_body }}`;
+            
+            // Read the comment content from file
+            const commentBody = fs.readFileSync('comment.md', 'utf8');
             
             // Create a comment on the PR
             await github.rest.issues.createComment({
