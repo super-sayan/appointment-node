@@ -68,8 +68,7 @@ jobs:
                 📌 **File**: \`${file}\`  
                 📌 **Line(s)**: \`${line}\`  
                 📌 **Rule Name**: \`${rule}\`  
-                📌 **Description**: ${description}
-                `;
+                📌 **Description**: \'${description}\`;
 
                 github.rest.issues.createComment({
                   owner: context.repo.owner,
