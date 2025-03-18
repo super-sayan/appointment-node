@@ -18,63 +18,118 @@
         #run: semgrep --config=malicious-code-ruleset --error
 name: Semgrep Scan
 on: [pull_request]
-
 jobs:
   semgrep:
     runs-on: ubuntu-latest
     permissions:
-      pull-requests: write  # Required to post comments in PR
+      contents: read
+      pull-requests: write
+      security-events: write
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
-
+        with:
+          fetch-depth: 0
+      
       - name: Install Semgrep
         run: pip install semgrep
-
+      
       - name: Clone malicious-code-ruleset
         run: git clone https://github.com/apiiro/malicious-code-ruleset.git
-
-      - name: Run Semgrep with SARIF Output
+      
+      - name: Run Semgrep with Ruleset and Output SARIF
         run: semgrep --config=malicious-code-ruleset --sarif --output=semgrep-results.sarif
-
+      
       - name: Upload SARIF Report to GitHub Security Tab
         uses: github/codeql-action/upload-sarif@v3
         with:
           sarif_file: semgrep-results.sarif
-
-      - name: Post Each Finding as Separate PR Comment
+      
+      - name: Process Semgrep Results into Comments
+        id: process-results
+        run: |
+          # Extract findings from SARIF and create comments
+          python -c "
+          import json
+          import os
+          
+          pr_number = os.environ['PR_NUMBER']
+          repo = os.environ['GITHUB_REPOSITORY']
+          
+          with open('semgrep-results.sarif', 'r') as f:
+              sarif_data = json.load(f)
+          
+          findings = []
+          
+          if 'runs' in sarif_data:
+              for run in sarif_data['runs']:
+                  if 'results' in run:
+                      for result in run['results']:
+                          message = result.get('message', {}).get('text', 'No message provided')
+                          rule_id = result.get('ruleId', 'Unknown rule')
+                          severity = 'Unknown'
+                          
+                          # Try to extract severity from tags or properties
+                          if 'properties' in result and 'severity' in result['properties']:
+                              severity = result['properties']['severity']
+                          elif 'tags' in result:
+                              for tag in result['tags']:
+                                  if tag.startswith('severity:'):
+                                      severity = tag.split(':')[1]
+                          
+                          # Get location info
+                          location = result.get('locations', [{}])[0]
+                          file_path = location.get('physicalLocation', {}).get('artifactLocation', {}).get('uri', 'Unknown file')
+                          
+                          region = location.get('physicalLocation', {}).get('region', {})
+                          start_line = region.get('startLine', 0)
+                          end_line = region.get('endLine', start_line)
+                          
+                          # Create formatted finding
+                          finding = {
+                              'rule_id': rule_id,
+                              'message': message,
+                              'severity': severity,
+                              'file_path': file_path,
+                              'start_line': start_line,
+                              'end_line': end_line
+                          }
+                          findings.append(finding)
+          
+          # Create output for GitHub Actions
+          comment_body = f'## Semgrep Security Scan Results\n\n'
+          
+          if findings:
+              comment_body += f'Found {len(findings)} potential security issues:\n\n'
+              
+              for i, finding in enumerate(findings, 1):
+                  emoji = '🔴' if finding['severity'].upper() in ['ERROR', 'HIGH'] else '🟠' if finding['severity'].upper() in ['WARNING', 'MEDIUM'] else '🟡'
+                  comment_body += f'{emoji} **{finding['rule_id']}** ({finding['severity']})\n'
+                  comment_body += f'- File: `{finding['file_path']}`\n'
+                  comment_body += f'- Lines: {finding['start_line']}-{finding['end_line']}\n'
+                  comment_body += f'- Message: {finding['message']}\n\n'
+          else:
+              comment_body += '✅ No security issues found! Great job!\n'
+          
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as f:
+              f.write(f'comment_body<<EOF\n{comment_body}\nEOF\n')
+          "
+        env:
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+      
+      - name: Comment on Pull Request
         uses: actions/github-script@v6
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
-            const fs = require('fs');
-            const sarifFile = 'semgrep-results.sarif';
-            const sarifData = JSON.parse(fs.readFileSync(sarifFile, 'utf8'));
-
-            sarifData.runs.forEach(run => {
-              run.results.forEach(result => {
-                const message = result.message.text;
-                const file = result.locations[0].physicalLocation.artifactLocation.uri;
-                const line = result.locations[0].physicalLocation.region.startLine;
-                const rule = result.ruleId;  // Rule name
-                
-                // Constructing the comment body with all details
-                const commentBody = `
-                ## 🚨 Semgrep Alert
-
-                🔴 **${message}**
-
-                📌 **File**: \`${file}\`  
-                📌 **Line(s)**: \`${line}\`  
-                📌 **Rule Name**: \`${rule}\`  
-                `;
-
-                github.rest.issues.createComment({
-                  owner: context.repo.owner,
-                  repo: context.repo.repo,
-                  issue_number: context.payload.pull_request.number,
-                  body: commentBody
-                });
-              });
+            const prNumber = context.issue.number;
+            const commentBody = `${{ steps.process-results.outputs.comment_body }}`;
+            
+            // Create a comment on the PR
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: prNumber,
+              body: commentBody
             });
 
